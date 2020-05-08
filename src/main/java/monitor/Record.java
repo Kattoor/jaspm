@@ -1,3 +1,5 @@
+package monitor;
+
 public class Record {
     private long time;
     private String content;
