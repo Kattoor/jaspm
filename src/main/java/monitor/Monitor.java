@@ -18,23 +18,12 @@ public class Monitor {
 
     private final AtomicBoolean listening = new AtomicBoolean(true);
 
-    public Monitor() {
-        String[] portNames = SerialPortList.getPortNames();
-
-        if (portNames.length == 0) return;
-
-        System.out.println("Listening to port: " + portNames[0]);
-
-        //this.serialPort = new SerialPort(portNames[0]);
-        this.serialPort = new SerialPort("COM3");
+    public Monitor(String portName, int baudRate, int dataBits, int stopBits) {
+        this.serialPort = new SerialPort(portName);
 
         try {
             serialPort.openPort();
-            serialPort.setParams(
-                    SerialPort.BAUDRATE_38400,
-                    SerialPort.DATABITS_8,
-                    SerialPort.STOPBITS_1,
-                    SerialPort.PARITY_NONE);
+            serialPort.setParams(baudRate, dataBits, stopBits, SerialPort.PARITY_NONE);
             serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
         } catch (SerialPortException e) {
             e.printStackTrace();

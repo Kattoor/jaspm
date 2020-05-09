@@ -1,6 +1,5 @@
 package monitor;
 
-import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
@@ -23,11 +22,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
-public class MonitorView extends Application {
-
-    public static void main(String[] args) {
-        launch(args);
-    }
+public class MonitorView extends Stage {
 
     final ObservableList<Record> data = FXCollections.observableArrayList();
     final TableView<Record> serialOutput = new TableView<>(data);
@@ -35,15 +30,14 @@ public class MonitorView extends Application {
     final TextField userInput = new TextField();
     final CheckBox interactiveMode = new CheckBox("Interactive");
 
-    @Override
-    public void start(Stage primaryStage) {
-        initializeUI(primaryStage);
-        Monitor monitor = initializeMonitor();
-        coupleUIEvents(primaryStage, monitor);
+    public MonitorView(Settings settings) {
+        initializeUI();
+        Monitor monitor = initializeMonitor(settings);
+        coupleUIEvents(monitor);
     }
 
-    void initializeUI(Stage primaryStage) {
-        primaryStage.setTitle("spm");
+    void initializeUI() {
+        setTitle("spm");
 
         initializeTableView();
 
@@ -52,8 +46,7 @@ public class MonitorView extends Application {
         VBox root = new VBox(serialOutput, serialInteractiveOutput, userInputPane);
         VBox.setVgrow(serialOutput, Priority.ALWAYS);
 
-        primaryStage.setScene(new Scene(root, 400, 400));
-        primaryStage.show();
+        setScene(new Scene(root, 400, 400));
     }
 
     void initializeTableView() {
@@ -75,8 +68,12 @@ public class MonitorView extends Application {
         serialOutput.getColumns().add(contentColumn);
     }
 
-    Monitor initializeMonitor() {
-        Monitor monitor = new Monitor();
+    Monitor initializeMonitor(Settings settings) {
+        Monitor monitor = new Monitor(
+                settings.getPortName(),
+                settings.getBaudRate(),
+                settings.getDataBits(),
+                settings.getStopBits());
 
         monitor.setRecordCallback(this::handleIncoming);
         monitor.setInteractiveCallback(this::handleIncoming);
@@ -86,8 +83,8 @@ public class MonitorView extends Application {
         return monitor;
     }
 
-    void coupleUIEvents(Stage primaryStage, Monitor monitor) {
-        primaryStage.setOnCloseRequest(event -> monitor.stopListening());
+    void coupleUIEvents(Monitor monitor) {
+        setOnCloseRequest(event -> monitor.stopListening());
 
         userInput.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             try {
@@ -109,11 +106,71 @@ public class MonitorView extends Application {
     <T> void handleIncoming(T incoming) {
         Platform.runLater(() -> {
             if (incoming.getClass() == Record.class) {
-                data.add((Record) incoming);
-                serialInteractiveOutput.clear();
+                handleIncomingLine((Record) incoming);
             } else if (incoming.getClass() == String.class) {
                 serialInteractiveOutput.appendText((String) incoming);
             }
         });
+    }
+
+    private void handleIncomingLine(Record record) {
+        data.add(record);
+        serialInteractiveOutput.clear();
+
+        String content = record.getContent();
+        if (content.startsWith("log[")) {
+            String serialNumber = content.substring(4).split("]")[0];
+            String[] parameters = content.split("]:")[1].split(";");
+            String firstPart = parameters[0];
+            String locked = parameters[1];
+            String pp = parameters[2];
+            String cp = parameters[3];
+            String cpn = parameters[4];
+            String unknown = parameters[5];
+
+            String[] meterValues = parameters[6].split(",");
+            String energyWh = meterValues[0];
+            String currentL1 = meterValues[1];
+            String currentL2 = meterValues[2];
+            String currentL3 = meterValues[3];
+            String powerL1 = meterValues[4];
+            String powerL2 = meterValues[5];
+            String powerL3 = meterValues[6];
+            String voltageL1 = meterValues[7];
+            String voltageL2 = meterValues[8];
+            String voltageL3 = meterValues[9];
+            String freq = meterValues[10];
+            String powerFactor = meterValues[11];
+            String activePower = meterValues[12];
+            String reActivePower = meterValues[13];
+            String positiveActiveEnergyL1 = meterValues[14];
+            String negativeActiveEnergyL1 = meterValues[15];
+            String positiveReActiveEnergyL1 = meterValues[16];
+            String negativeReActiveEnergyL1 = meterValues[17];
+            String positiveActiveEnergyL2 = meterValues[18];
+            String negativeActiveEnergyL2 = meterValues[19];
+            String positiveReActiveEnergyL2 = meterValues[20];
+            String negativeReActiveEnergyL2 = meterValues[21];
+            String positiveActiveEnergyL3 = meterValues[22];
+            String negativeActiveEnergyL3 = meterValues[23];
+            String positiveReActiveEnergyL3 = meterValues[24];
+            String negativeReActiveEnergyL3 = meterValues[25];
+            String temperature = meterValues[26];
+
+            String suffix = parameters[9];
+            String[] suffixParts = suffix.split("\\|");
+            String dFixValue = suffixParts[0];
+            String doStatus = suffixParts[1];
+            String ledStatus = suffixParts[2];
+            String meterKWH = suffixParts[3];
+
+            String[] evenMoreSuffixParts = suffixParts[4].split(",");
+            String cp100 = evenMoreSuffixParts[0];
+            String cpn100 = evenMoreSuffixParts[1];
+            String lastIteraties = evenMoreSuffixParts[2];
+
+            System.out.println("TEMPERATURE " + temperature);
+            System.out.println("LED STATUS " + ledStatus);
+        }
     }
 }
