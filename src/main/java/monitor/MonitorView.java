@@ -1,14 +1,12 @@
 package monitor;
 
+import com.moandjiezana.toml.Toml;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.Scene;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
@@ -17,6 +15,12 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import jssc.SerialPortException;
 
+import java.io.File;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,17 +40,51 @@ public class MonitorView extends Stage {
         coupleUIEvents(monitor);
     }
 
-    void initializeUI() {
+    private void initializeUI() {
         setTitle("spm");
 
+        MenuBar menuBar = initializeMenuBar();
         initializeTableView();
 
         HBox userInputPane = new HBox(userInput, interactiveMode);
 
-        VBox root = new VBox(serialOutput, serialInteractiveOutput, userInputPane);
+        VBox root = new VBox(menuBar, serialOutput, serialInteractiveOutput, userInputPane);
         VBox.setVgrow(serialOutput, Priority.ALWAYS);
 
         setScene(new Scene(root, 400, 400));
+    }
+
+    private MenuBar initializeMenuBar() {
+        MenuItem menuItemBoot = new MenuItem("boot");
+        MenuItem menuItemProgram = new MenuItem("program");
+
+        String atProgram = "C:/Program Files (x86)/Atmel/Studio/7.0/atbackend/atprogram.exe";
+
+        menuItemBoot.setOnAction(event -> {
+            String[] chipErase = new String[]{atProgram, "-t", "atmelice", "-i", "PDI", "-d", "ATxmega256A3BU", "chiperase"};
+            String[] program = new String[]{atProgram, "-t", "atmelice", "-i", "PDI", "-d", "ATxmega256A3BU", "program", "-c", "-fl", "-f", "C:/Users/jasper.catthoor/IdeaProjects/LoLoBranch/ewall_ze/LoLo/target/boot_TNM_NC/ewall_boot_TNM_NC.hex"};
+            new Thread(() -> {
+                try {
+                    new ProcessBuilder(chipErase).inheritIO().start().waitFor();
+                    new ProcessBuilder(program).inheritIO().start().waitFor();
+                } catch (IOException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        });
+
+        menuItemProgram.setOnAction(event -> {
+            String[] program = new String[]{atProgram, "-t", "atmelice", "-i", "PDI", "-d", "ATxmega256A3BU", "program", "-c", "-fl", "-f", "C:/Users/jasper.catthoor/IdeaProjects/LoLoBranch/ewall_ze/LoLo/target/TNM_NC/ewall_TNM_NC.hex"};
+            try {
+                new ProcessBuilder(program).inheritIO().start().waitFor();
+            } catch (InterruptedException | IOException e) {
+                e.printStackTrace();
+            }
+        });
+
+        Menu menu = new Menu("Upload", null, menuItemBoot, menuItemProgram);
+
+        return new MenuBar(menu);
     }
 
     void initializeTableView() {
@@ -171,6 +209,49 @@ public class MonitorView extends Stage {
 
             System.out.println("TEMPERATURE " + temperature);
             System.out.println("LED STATUS " + ledStatus);
+            System.out.println("LOCKED: " + locked);
+
+            sendData(
+                    record.getTime(),
+                    Double.parseDouble(temperature),
+                    Integer.parseInt(ledStatus),
+                    Integer.parseInt(locked) != 0,
+                    Double.parseDouble(pp),
+                    Double.parseDouble(cp),
+                    Double.parseDouble(currentL1));
         }
+    }
+
+    private void insert(String url, String user, String password, String table, long time, Object value) {
+        String query = String.format("INSERT INTO %s(time, value) VALUES(?, ?)", table);
+        try (Connection con = DriverManager.getConnection(url, user, password);
+             PreparedStatement pst = con.prepareStatement(query)) {
+
+            pst.setLong(1, time);
+
+            pst.setObject(2, value);
+
+            pst.executeUpdate();
+
+        } catch (SQLException ignored) {
+        }
+    }
+
+    private void sendData(long time, double temperature, int ledStatus, boolean locked, double pp, double cp, double currentL1) {
+        Toml toml = Config.get();
+
+        String user = Config.get().getString("postgres.user");
+        String password = Config.getSecret().getString("postgres.password");
+
+        String url = String.format("jdbc:postgresql://%s:%s/temperature",
+                toml.getString("postgres.host"),
+                toml.getString("postgres.port"));
+
+        insert(url, user, password, "temperature", time, temperature);
+        insert(url, user, password, "led", time, ledStatus);
+        insert(url, user, password, "locked", time, locked);
+        insert(url, user, password, "pp", time, pp);
+        insert(url, user, password, "cp", time, cp);
+        insert(url, user, password, "current_l1", time, currentL1);
     }
 }
